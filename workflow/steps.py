@@ -12,7 +12,10 @@ PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
 
 def _load(filename: str) -> str:
-    return (PROMPTS_DIR / filename).read_text()
+    path = PROMPTS_DIR / filename
+    if not path.exists():
+        raise FileNotFoundError(f"Prompt file not found: {path}")
+    return path.read_text(encoding="utf-8")
 
 
 def _bug_and_classification(ctx: WorkflowContext) -> str:

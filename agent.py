@@ -22,16 +22,16 @@ DAG:
                                             summary
 """
 
+import logging
 import os
 import sys
-import json
 from pathlib import Path
 
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from openai import AzureOpenAI
 from dotenv import load_dotenv
 
-from workflow.engine import WorkflowEngine, BranchCondition, WorkflowContext
+from workflow.engine import WorkflowEngine, WorkflowContext
 from workflow.steps import (
     intake_step,
     classifier_step,
@@ -48,6 +48,8 @@ load_dotenv(Path(__file__).parent / ".env")
 
 PROJECT_ENDPOINT = os.environ["PROJECT_ENDPOINT"]
 MODEL_DEPLOYMENT_NAME = os.environ["MODEL_DEPLOYMENT_NAME"]
+
+log = logging.getLogger(__name__)
 
 
 # ── LLM call function ────────────────────────────────────────────────────────
@@ -78,17 +80,16 @@ def make_llm_call(token_provider):
 # ── Branch condition: routes after classify step ─────────────────────────────
 
 def route_by_severity(ctx: WorkflowContext) -> str:
-    classification = ctx.get_json("classify")
-    severity = classification.get("severity", "").lower()
+    severity = ctx.get_json("classify").get("severity", "").lower()
 
     if severity == "critical":
-        print(f"  [branch] severity={severity!r} → critical_escalation")
+        log.debug("[branch] severity=%r → critical_escalation", severity)
         return "critical_escalation"
     elif severity == "high":
-        print(f"  [branch] severity={severity!r} → sprint_triage")
+        log.debug("[branch] severity=%r → sprint_triage", severity)
         return "sprint_triage"
     else:
-        print(f"  [branch] severity={severity!r} → backlog")
+        log.debug("[branch] severity=%r → backlog", severity)
         return "backlog"
 
 
@@ -104,12 +105,10 @@ def build_workflow(llm_call) -> WorkflowEngine:
     engine.add_step(backlog_step,             next_step="summary")
     engine.add_step(summary_step)             # terminal
 
-    engine.add_branch(BranchCondition(
-        after_step="classify",
-        condition=route_by_severity,
-    ))
+    engine.add_branch(after_step="classify", condition=route_by_severity)
 
     engine.set_entry("intake")
+    engine.validate()
     return engine
 
 
@@ -156,19 +155,11 @@ Reporter: QA team during regression testing.
 ]
 
 
-# ── Main ─────────────────────────────────────────────────────────────────────
+# ── Input selection ──────────────────────────────────────────────────────────
 
-def main():
-    credential = DefaultAzureCredential()
-    token_provider = get_bearer_token_provider(
-        credential, "https://ai.azure.com/.default"
-    )
-    llm_call = make_llm_call(token_provider)
-    engine = build_workflow(llm_call)
-
-    print("Bug Triage Workflow")
-    print("=" * 60)
-    print("\nSelect a bug to triage:")
+def select_bug() -> str:
+    """Present the bug menu and return the raw report text."""
+    print("Select a bug to triage:")
     for i, bug in enumerate(SAMPLE_BUGS):
         print(f"  {i + 1}. [{bug['id']}] {bug['label']}")
     print("  4. Enter custom bug report")
@@ -179,8 +170,9 @@ def main():
     if choice in ("1", "2", "3"):
         bug = SAMPLE_BUGS[int(choice) - 1]
         print(f"\nProcessing: {bug['label']}")
-        raw_input = bug["report"].strip()
-    elif choice == "4":
+        return bug["report"].strip()
+
+    if choice == "4":
         print("\nPaste your bug report (press Enter twice when done):")
         lines = []
         while True:
@@ -188,26 +180,26 @@ def main():
             if line == "" and lines and lines[-1] == "":
                 break
             lines.append(line)
-        raw_input = "\n".join(lines).strip()
-    else:
-        print("Invalid choice.")
-        return
+        return "\n".join(lines).strip()
 
-    print("\nRunning triage workflow...")
-    ctx = engine.run(raw_input, verbose=True)
+    print("Invalid choice.")
+    return ""
 
+
+# ── Output formatting ────────────────────────────────────────────────────────
+
+def print_results(ctx: WorkflowContext) -> None:
+    """Pretty-print classification, branch output, and summary from a completed run."""
     print("\n" + "=" * 60)
     print("TRIAGE COMPLETE")
     print("=" * 60)
 
-    # Print classification
     classification = ctx.get_json("classify")
     if classification:
         print(f"\nSeverity : {classification.get('severity', '?').upper()}")
         print(f"Category : {classification.get('category', '?')}")
         print(f"Reasoning: {classification.get('reasoning', '')}")
 
-    # Print branch output
     branch_steps = ["critical_escalation", "sprint_triage", "backlog"]
     for step_name in branch_steps:
         if step_name in ctx.steps:
@@ -217,12 +209,38 @@ def main():
             print(ctx.steps[step_name])
             break
 
-    # Print summary
     if "summary" in ctx.steps:
         print(f"\n{'─' * 60}")
         print("TRIAGE SUMMARY")
         print("─" * 60)
         print(ctx.steps["summary"])
+
+
+# ── Main ─────────────────────────────────────────────────────────────────────
+
+def main():
+    logging.basicConfig(level=logging.WARNING, format="  %(message)s", stream=sys.stdout)
+    logging.getLogger("workflow").setLevel(logging.DEBUG)
+    logging.getLogger(__name__).setLevel(logging.DEBUG)
+
+    credential = DefaultAzureCredential()
+    token_provider = get_bearer_token_provider(
+        credential, "https://ai.azure.com/.default"
+    )
+    llm_call = make_llm_call(token_provider)
+    engine = build_workflow(llm_call)
+
+    print("Bug Triage Workflow")
+    print("=" * 60)
+    print()
+
+    report = select_bug()
+    if not report:
+        return
+
+    print("\nRunning triage workflow...")
+    ctx = engine.run(report)
+    print_results(ctx)
 
 
 if __name__ == "__main__":
