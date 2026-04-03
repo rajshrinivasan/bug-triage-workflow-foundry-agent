@@ -22,6 +22,7 @@ DAG:
                                             summary
 """
 
+import json
 import logging
 import os
 import sys
@@ -48,6 +49,7 @@ load_dotenv(Path(__file__).parent / ".env")
 
 PROJECT_ENDPOINT = os.environ["PROJECT_ENDPOINT"]
 MODEL_DEPLOYMENT_NAME = os.environ["MODEL_DEPLOYMENT_NAME"]
+API_VERSION = os.environ["API_VERSION"]
 
 log = logging.getLogger(__name__)
 
@@ -61,7 +63,7 @@ def make_llm_call(token_provider):
     client = AzureOpenAI(
         azure_endpoint=inference_endpoint,
         azure_ad_token_provider=token_provider,
-        api_version="2024-10-21",
+        api_version=API_VERSION,
     )
 
     def llm_call(system_prompt: str, user_message: str) -> str:
@@ -114,45 +116,8 @@ def build_workflow(llm_call) -> WorkflowEngine:
 
 # ── Sample bugs ──────────────────────────────────────────────────────────────
 
-SAMPLE_BUGS = [
-    {
-        "id": "BUG-001",
-        "label": "Critical — authentication outage",
-        "report": """
-Users cannot log in to the application. The login page returns a 500 error
-after submitting credentials. This started approximately 20 minutes ago.
-All users are affected — nobody can access the platform. Our on-call engineer
-checked and the auth service is returning database connection errors.
-Environment: Production.
-Reporter: Platform Operations team.
-""",
-    },
-    {
-        "id": "BUG-002",
-        "label": "High — payment processing failure",
-        "report": """
-Subscription renewals are failing for users on annual plans.
-The payment processor returns error code 4012 (card declined) even for cards
-that were previously charged successfully. Monthly plan renewals appear unaffected.
-Approximately 200 users are impacted. No workaround available.
-Steps to reproduce: wait for an annual plan renewal to trigger, or manually
-trigger a renewal from the admin panel for an annual plan user.
-Reporter: Customer Success, escalated from 3 support tickets.
-""",
-    },
-    {
-        "id": "BUG-003",
-        "label": "Low — cosmetic UI misalignment",
-        "report": """
-On the contacts list page, the column headers are misaligned by a few pixels
-in Safari 17 on macOS. The columns themselves display correctly; only the header
-row is shifted right. Chrome and Firefox are not affected.
-This is a cosmetic issue — all functionality works correctly.
-Steps to reproduce: open contacts list in Safari 17 on macOS Sonoma.
-Reporter: QA team during regression testing.
-""",
-    },
-]
+_BUGS_FILE = Path(__file__).parent / "sample_bugs.json"
+SAMPLE_BUGS: list[dict] = json.loads(_BUGS_FILE.read_text(encoding="utf-8"))
 
 
 # ── Input selection ──────────────────────────────────────────────────────────

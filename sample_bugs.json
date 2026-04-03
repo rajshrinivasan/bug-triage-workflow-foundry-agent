@@ -1,0 +1,17 @@
+[
+  {
+    "id": "BUG-001",
+    "label": "Critical \u2014 authentication outage",
+    "report": "Users cannot log in to the application. The login page returns a 500 error\nafter submitting credentials. This started approximately 20 minutes ago.\nAll users are affected \u2014 nobody can access the platform. Our on-call engineer\nchecked and the auth service is returning database connection errors.\nEnvironment: Production.\nReporter: Platform Operations team."
+  },
+  {
+    "id": "BUG-002",
+    "label": "High \u2014 payment processing failure",
+    "report": "Subscription renewals are failing for users on annual plans.\nThe payment processor returns error code 4012 (card declined) even for cards\nthat were previously charged successfully. Monthly plan renewals appear unaffected.\nApproximately 200 users are impacted. No workaround available.\nSteps to reproduce: wait for an annual plan renewal to trigger, or manually\ntrigger a renewal from the admin panel for an annual plan user.\nReporter: Customer Success, escalated from 3 support tickets."
+  },
+  {
+    "id": "BUG-003",
+    "label": "Low \u2014 cosmetic UI misalignment",
+    "report": "On the contacts list page, the column headers are misaligned by a few pixels\nin Safari 17 on macOS. The columns themselves display correctly; only the header\nrow is shifted right. Chrome and Firefox are not affected.\nThis is a cosmetic issue \u2014 all functionality works correctly.\nSteps to reproduce: open contacts list in Safari 17 on macOS Sonoma.\nReporter: QA team during regression testing."
+  }
+]
