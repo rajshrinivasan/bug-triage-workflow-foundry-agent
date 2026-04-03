@@ -1,0 +1,21 @@
+# Environment
+.env
+
+# Virtual environment
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Generated artifacts
+tmp/
+
+# IDE
+.vscode/
+.idea/
