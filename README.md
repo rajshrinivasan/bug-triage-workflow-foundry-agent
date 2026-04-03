@@ -29,7 +29,7 @@ Each node is a `WorkflowStep` — a named LLM call with its own system prompt an
 13-bug-triage-workflow/
 ├── workflow/
 │   ├── __init__.py
-│   ├── engine.py          # WorkflowEngine, WorkflowStep, BranchCondition, WorkflowContext
+│   ├── engine.py          # WorkflowEngine, WorkflowStep, WorkflowContext
 │   └── steps.py           # Step instances with prompts and input builders
 ├── prompts/
 │   ├── intake_prompt.txt
@@ -38,7 +38,7 @@ Each node is a `WorkflowStep` — a named LLM call with its own system prompt an
 │   ├── sprint_triage_prompt.txt
 │   ├── backlog_prompt.txt
 │   └── summary_prompt.txt
-├── agent.py               # Workflow assembly, branch condition, main loop
+├── agent.py               # Workflow assembly, branch condition, I/O
 ├── requirements.txt
 └── README.md
 ```
@@ -80,8 +80,19 @@ Select one of the three pre-seeded bugs (covering all three severity paths) or e
 ### Critical path (BUG-001 — authentication outage)
 
 ```
-Running triage workflow...
+Bug Triage Workflow
+============================================================
 
+Select a bug to triage:
+  1. [BUG-001] Critical — authentication outage
+  2. [BUG-002] High — payment processing failure
+  3. [BUG-003] Low — cosmetic UI misalignment
+  4. Enter custom bug report
+
+Choice (1-4):
+Processing: Critical — authentication outage
+
+Running triage workflow...
   [step: intake]
   [step: classify]
   [branch] severity='critical' → critical_escalation
@@ -94,7 +105,8 @@ TRIAGE COMPLETE
 
 Severity : CRITICAL
 Category : authentication
-Reasoning: All users are blocked from logging into the platform, making the system effectively down.
+Reasoning: The bug prevents all users from logging into the platform, effectively
+           blocking core functionality and causing system downtime.
 
 ────────────────────────────────────────────────────────────
 CRITICAL ESCALATION
@@ -109,16 +121,7 @@ IMMEDIATE ACTIONS
 2. Mitigation: rollback last stable auth service version; enable circuit breaker;
    disable recent feature flags via admin panel.
 3. Customer communication: YES — trigger immediately (total login outage).
-
-INVESTIGATION PRIORITIES
-1. Auth service logs and metrics (source of the 500 error)
-2. Database health and connection pool utilization
-3. Recent deployments or config changes affecting authentication
-4. Network connectivity between auth service and database
-
-STATUS PAGE UPDATE
-"Authentication service outage: We are investigating an issue preventing users from
-logging in. Next update in 30 minutes."
+...
 
 ────────────────────────────────────────────────────────────
 TRIAGE SUMMARY
@@ -126,14 +129,7 @@ TRIAGE SUMMARY
 BUG TITLE: Login page returns 500 error
 SEVERITY & CATEGORY: Critical — Authentication
 TRIAGE PATH: Critical Escalation → complete login outage, all users blocked
-OUTCOME: Escalated to Authentication team. Rollback, circuit breaker, and customer
-         communication initiated. Updates every 30 minutes.
 ESTIMATED RESOLUTION: 4–8 hours
-AUDIT TRAIL:
-  intake              → all users blocked, production, auth service returning DB errors
-  classify            → critical / authentication / high confidence
-  critical_escalation → personnel paged, mitigation steps issued, status page updated
-  summary             → triage record written
 ```
 
 ### High path (BUG-002 — payment processing failure)
@@ -169,7 +165,10 @@ Category : ui
 - **`WorkflowEngine`**: takes a single `llm_call(system_prompt, user_message) -> str` function. LLM provider is injected — the engine itself has no Azure dependency.
 - **`WorkflowContext`**: accumulates step outputs by name. Each step's `input_builder` receives the full context, so later steps can reference earlier outputs.
 - **`parse_json=True`**: steps that return JSON (intake, classify) have their output parsed and stored in `ctx.metadata`. The branch condition reads `ctx.get_json("classify")["severity"]`.
+- **`engine.validate()`**: called at build time to verify all `next_step` references and branch `after_step` names resolve to registered steps. Wiring errors surface before any LLM call is made.
+- **Branch registration**: `engine.add_branch(after_step="classify", condition=fn)` — branch conditions are plain callables, no wrapper class needed.
 - **Branch safety**: if JSON parsing fails (model returns malformed JSON), `get_json()` returns `{}` and the branch defaults to `"backlog"`.
+- **Logging**: the engine emits step trace via `logging.getLogger("workflow.engine")`. Branch trace comes from `logging.getLogger(__name__)` in `agent.py`. Azure SDK noise is suppressed by scoping both loggers explicitly — no debug spam from the identity library.
 - **No agent framework dependency**: uses the OpenAI client directly against the Azure AI Foundry endpoint. Workflow logic is pure Python in `workflow/engine.py`.
 
 ## Extending the DAG
@@ -180,7 +179,7 @@ Adding a new step is three lines:
 # 1. Define the step
 review_step = WorkflowStep(
     name="peer_review",
-    system_prompt=load("peer_review_prompt.txt"),
+    system_prompt=_load("peer_review_prompt.txt"),
     input_builder=lambda ctx: ctx.steps.get("sprint_triage", ""),
 )
 
@@ -190,3 +189,5 @@ engine.add_step(review_step, next_step="summary")
 # 3. Update the step that should flow into it
 engine.add_step(sprint_triage_step, next_step="peer_review")  # was next_step="summary"
 ```
+
+`engine.validate()` will catch any broken references immediately at startup.
