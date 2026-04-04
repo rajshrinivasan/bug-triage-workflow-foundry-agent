@@ -164,7 +164,7 @@ Category : ui
 
 - **`WorkflowEngine`**: takes a single `llm_call(system_prompt, user_message) -> str` function. LLM provider is injected — the engine itself has no Azure dependency.
 - **`WorkflowContext`**: accumulates step outputs by name. Each step's `input_builder` receives the full context, so later steps can reference earlier outputs.
-- **`parse_json=True`**: steps that return JSON (intake, classify) have their output parsed and stored in `ctx.metadata`. The branch condition reads `ctx.get_json("classify")["severity"]`.
+- **`parse_json=True`**: steps that return JSON (intake, classify) have their output parsed and stored in `ctx.parsed`. The branch condition reads `ctx.get_json("classify")["severity"]`.
 - **`engine.validate()`**: called at build time to verify all `next_step` references and branch `after_step` names resolve to registered steps. Wiring errors surface before any LLM call is made.
 - **Branch registration**: `engine.add_branch(after_step="classify", condition=fn)` — branch conditions are plain callables, no wrapper class needed.
 - **Branch safety**: if JSON parsing fails (model returns malformed JSON), `get_json()` returns `{}` and the branch defaults to `"backlog"`.

@@ -26,11 +26,11 @@ class WorkflowContext:
     """Accumulated state passed through the workflow."""
     raw_input: str
     steps: dict[str, str] = field(default_factory=dict)     # step_name → output text
-    metadata: dict[str, dict] = field(default_factory=dict)  # step_name → parsed JSON
+    parsed: dict[str, dict] = field(default_factory=dict)  # step_name → parsed JSON output
 
     def get_json(self, step_name: str) -> dict:
-        """Return parsed JSON metadata for a step, or empty dict."""
-        return self.metadata.get(step_name, {})
+        """Return parsed JSON output for a step, or empty dict."""
+        return self.parsed.get(step_name, {})
 
 
 @dataclass
@@ -41,7 +41,7 @@ class WorkflowStep:
     name:           unique identifier
     system_prompt:  instruction text for the LLM
     input_builder:  callable(WorkflowContext) -> str fed to the LLM as user message
-    parse_json:     if True, attempt to parse output as JSON and store in context.metadata
+    parse_json:     if True, attempt to parse output as JSON and store in context.parsed
     """
     name: str
     system_prompt: str
@@ -123,9 +123,9 @@ class WorkflowEngine:
 
             if step.parse_json:
                 try:
-                    ctx.metadata[step.name] = json.loads(self._strip_fences(output))
+                    ctx.parsed[step.name] = json.loads(self._strip_fences(output))
                 except json.JSONDecodeError:
-                    ctx.metadata[step.name] = {}
+                    ctx.parsed[step.name] = {}
 
             # Branch condition takes priority over default next
             if current in self._branches:
