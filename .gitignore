@@ -16,6 +16,9 @@ build/
 # Generated artifacts
 tmp/
 
+# Personal exercises
+exercises/
+
 # IDE
 .vscode/
 .idea/
